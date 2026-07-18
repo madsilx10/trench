@@ -223,6 +223,11 @@ async function oauthXToTrench(authToken, ct0) {
     currentUrl = next.startsWith('http') ? next : new URL(next, currentUrl).href;
   }
 
+  // Fallback: ambil dari accumulated cookies kalau belum dapat
+  if (!trenchUser) {
+    const um = accCookies.match(/trench_user=([^;& ]+)/);
+    if (um) trenchUser = decodeURIComponent(um[1]);
+  }
   if (!trenchSession) throw new Error('Gagal dapat trench_x_session dari callback');
   return { trenchSession, trenchUser };
 }
@@ -279,7 +284,18 @@ async function followTrendotch(session, user) {
   return parseRSC(data) ?? data;
 }
 
-// ── Process satu akun ─────────────────────────
+// ── Ambil screen_name dari X ──────────────────
+async function getXUsername(authToken, ct0) {
+  try {
+    const { data } = await axios.get(
+      'https://x.com/i/api/1.1/account/verify_credentials.json',
+      { headers: xH(authToken, ct0) }
+    );
+    return data.screen_name || '';
+  } catch { return ''; }
+}
+
+
 async function processAccount({ authToken, ct0 }, idx) {
   const tag = `[Akun ${idx + 1}]`;
   console.log(`\n${tag}`);
@@ -306,8 +322,9 @@ async function processAccount({ authToken, ct0 }, idx) {
 
   // Step 2: OAuth X → tren.ch
   console.log(`  oauth X → tren.ch...`);
+  const xUsername = await getXUsername(authToken, ct0);
   const { trenchSession, trenchUser } = await oauthXToTrench(authToken, ct0);
-  console.log(`  ✓ login sebagai @${trenchUser}`);
+  console.log(`  ✓ login sebagai @${xUsername || trenchUser || '?'}`);
   await rDelay(2000, 4000);
 
   // Step 3: Claim
