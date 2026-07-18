@@ -84,60 +84,63 @@ async function followOnX(authToken, ct0) {
 
 // ── OAuth X → tren.ch ─────────────────────────
 async function oauthXToTrench(authToken, ct0) {
-  // 1. Initiate dari tren.ch → dapat X authorize URL
-  const initRes = await axios.get('https://tren.ch/api/auth/x', {
+  const navHeaders = {
+    'User-Agent': UA,
+    'Sec-Ch-Ua': SEC_CH_UA,
+    'Sec-Ch-Ua-Mobile': '?1',
+    'Sec-Ch-Ua-Platform': '"Android"',
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Encoding': 'gzip, deflate, br, zstd',
+    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Dest': 'document',
+    'Upgrade-Insecure-Requests': '1',
+  };
+
+  // 1. Initiate dari tren.ch → 302 ke X authorize + set cookie PKCE
+  const initRes = await axios.get('https://tren.ch/api/auth/x/start?next=/claim', {
     maxRedirects: 0,
     validateStatus: s => s < 500,
-    headers: {
-      'User-Agent': UA,
-      'Sec-Ch-Ua': SEC_CH_UA,
-      'Sec-Ch-Ua-Mobile': '?1',
-      'Sec-Ch-Ua-Platform': '"Android"',
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Dest': 'document',
-    }
+    headers: { ...navHeaders, 'Sec-Fetch-Site': 'same-origin', Referer: 'https://tren.ch/claim' }
   });
 
   const xAuthUrl = initRes.headers.location;
   if (!xAuthUrl || !xAuthUrl.includes('x.com')) {
-    throw new Error(`Gagal dapat X authorize URL dari tren.ch. Status: ${initRes.status}, Location: ${xAuthUrl}`);
+    throw new Error(`Gagal dapat X authorize URL. Status: ${initRes.status}, Location: ${xAuthUrl}`);
   }
 
-  // 2. Hit X authorize dengan cookie akun
+  // Simpan PKCE cookies dari tren.ch untuk dikirim balik saat callback
+  const trenchPkceCookies = (initRes.headers['set-cookie'] || [])
+    .map(c => c.split(';')[0]).join('; ');
+
+  // 2. Hit X authorize dengan cookie akun → X redirect ke tren.ch callback
   const xAuthRes = await axios.get(xAuthUrl, {
     maxRedirects: 0,
     validateStatus: s => s < 500,
-    headers: xH(authToken, ct0, {
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Dest': 'document',
+    headers: {
+      ...xH(authToken, ct0),
+      ...navHeaders,
       'Sec-Fetch-Site': 'cross-site',
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    })
+    }
   });
 
-  // Ambil callback URL
+  // Ambil callback URL dari redirect X
   let callbackUrl = xAuthRes.headers.location;
   if (!callbackUrl && typeof xAuthRes.data === 'object') {
     callbackUrl = xAuthRes.data.redirect_uri;
   }
-  if (!callbackUrl) {
-    throw new Error('X tidak redirect ke tren.ch callback');
+  if (!callbackUrl || !callbackUrl.includes('tren.ch')) {
+    throw new Error(`X tidak redirect ke tren.ch callback. Location: ${callbackUrl}`);
   }
 
-  // 3. Hit tren.ch callback → dapat session cookies
+  // 3. Hit tren.ch callback dengan PKCE cookies → dapat session
   const cbRes = await axios.get(callbackUrl, {
     maxRedirects: 10,
     validateStatus: s => s < 500,
     headers: {
-      'User-Agent': UA,
-      'Sec-Ch-Ua': SEC_CH_UA,
-      'Sec-Ch-Ua-Mobile': '?1',
-      'Sec-Ch-Ua-Platform': '"Android"',
-      Accept: 'text/html,application/xhtml+xml',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Dest': 'document',
+      ...navHeaders,
       'Sec-Fetch-Site': 'cross-site',
+      Cookie: trenchPkceCookies,
     }
   });
 
