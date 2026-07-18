@@ -73,22 +73,10 @@ const xH = (authToken, ct0, extra = {}) => ({
 });
 
 // ── Follow @trenches di X ─────────────────────
-let _uid = null;
-async function getTrenchesId(authToken, ct0) {
-  if (_uid) return _uid;
-  const { data } = await axios.get('https://x.com/i/api/1.1/users/show.json', {
-    params: { screen_name: 'trenches' },
-    headers: xH(authToken, ct0)
-  });
-  _uid = data.id_str;
-  return _uid;
-}
-
 async function followOnX(authToken, ct0) {
-  const uid = await getTrenchesId(authToken, ct0);
   const { data } = await axios.post(
     'https://x.com/i/api/1.1/friendships/create.json',
-    `user_id=${uid}`,
+    'screen_name=trenches',
     { headers: xH(authToken, ct0, { 'Content-Type': 'application/x-www-form-urlencoded' }) }
   );
   return data;
@@ -221,34 +209,45 @@ async function followTrendotch(session, user) {
 // ── Process satu akun ─────────────────────────
 async function processAccount({ authToken, ct0 }, idx) {
   const tag = `[Akun ${idx + 1}]`;
+  console.log(`\n${tag}`);
 
   // Step 1: Follow @trenches di X
   if (isFollowed(authToken)) {
-    console.log(`${tag} Sudah follow @trenches → skip`);
+    console.log(`  follow @trenches → skip (sudah follow)`);
   } else {
-    console.log(`${tag} Follow @trenches di X...`);
-    await followOnX(authToken, ct0);
-    markFollowed(authToken);
-    console.log(`${tag} ✓ Followed @trenches`);
+    console.log(`  follow @trenches...`);
+    try {
+      await followOnX(authToken, ct0);
+      markFollowed(authToken);
+      console.log(`  ✓ followed @trenches`);
+    } catch (e) {
+      if (e.response?.status === 403) {
+        markFollowed(authToken);
+        console.log(`  ✓ sudah follow @trenches`);
+      } else {
+        console.log(`  ✗ follow gagal: ${e.message} — lanjut`);
+      }
+    }
     await rDelay(2000, 4000);
   }
 
   // Step 2: OAuth X → tren.ch
-  console.log(`${tag} OAuth X → tren.ch...`);
+  console.log(`  oauth X → tren.ch...`);
   const { trenchSession, trenchUser } = await oauthXToTrench(authToken, ct0);
-  console.log(`${tag} ✓ Login sebagai @${trenchUser}`);
+  console.log(`  ✓ login sebagai @${trenchUser}`);
   await rDelay(2000, 4000);
 
   // Step 3: Claim
-  console.log(`${tag} Claim...`);
+  console.log(`  claim...`);
   const claimRes = await claimTrench(trenchSession, trenchUser);
-  console.log(`${tag} ✓ Claim: ok=${claimRes?.ok} isNew=${claimRes?.isNew}`);
+  console.log(`  ✓ ok=${claimRes?.ok} isNew=${claimRes?.isNew}`);
   await rDelay(2000, 4000);
 
   // Step 4: Follow task
-  console.log(`${tag} Task follow_trendotch...`);
+  console.log(`  task follow_trendotch...`);
   const taskRes = await followTrendotch(trenchSession, trenchUser);
-  console.log(`${tag} ✓ Task: stars=${taskRes?.stars} tasks=${JSON.stringify(taskRes?.tasksCompleted)}`);
+  console.log(`  ✓ stars=${taskRes?.stars}`);
+  console.log(`  ✓ tasks=${JSON.stringify(taskRes?.tasksCompleted)}`);
 }
 
 // ── Main ──────────────────────────────────────
@@ -257,9 +256,13 @@ async function main() {
   if (!accounts.length) { console.log('akun.txt kosong'); return; }
   console.log(`${accounts.length} akun ditemukan\n`);
 
-  const mode = (await prompt('Mode (1 = satu akun, 2 = semua): ')).trim();
+  console.log('1. 1 akun');
+  console.log('2. Semua akun');
+  console.log('3. From X to end');
+  const mode = (await prompt('Pilih mode: ')).trim();
 
-  let targets;
+  let targets, skipFollow = false;
+
   if (mode === '1') {
     const pick = (await prompt(`Pilih akun (1-${accounts.length}): `)).trim();
     const i = parseInt(pick) - 1;
@@ -267,8 +270,18 @@ async function main() {
       console.log('Nomor tidak valid'); return;
     }
     targets = [{ ...accounts[i], idx: i }];
-  } else {
+  } else if (mode === '2') {
     targets = accounts.map((a, i) => ({ ...a, idx: i }));
+  } else if (mode === '3') {
+    const from = (await prompt(`Mulai dari akun ke- (1-${accounts.length}): `)).trim();
+    const i = parseInt(from) - 1;
+    if (isNaN(i) || i < 0 || i >= accounts.length) {
+      console.log('Nomor tidak valid'); return;
+    }
+    targets = accounts.slice(i).map((a, j) => ({ ...a, idx: i + j }));
+    console.log(`Proses akun ${i + 1} sampai ${accounts.length}`);
+  } else {
+    console.log('Pilihan tidak valid'); return;
   }
 
   for (let i = 0; i < targets.length; i++) {
