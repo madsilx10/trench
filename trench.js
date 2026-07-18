@@ -134,7 +134,11 @@ async function oauthXToTrench(authToken, ct0) {
   if (!callbackUrl && xAuthRes.status === 200) {
     const html = typeof xAuthRes.data === 'string' ? xAuthRes.data : JSON.stringify(xAuthRes.data);
     const authCodeMatch = html.match(/"auth_code"\s*:\s*"([^"]+)"/);
-    if (!authCodeMatch) throw new Error('Tidak bisa extract auth_code dari halaman X authorize');
+    if (!authCodeMatch) {
+      // DEBUG: dump HTML buat lihat struktur auth_code
+      console.log(`  [DBG] HTML snippet:\n${html.slice(0, 2000)}`);
+      throw new Error('Tidak bisa extract auth_code dari halaman X authorize');
+    }
     const authCode = authCodeMatch[1];
 
     const approveRes = await axios.post(
