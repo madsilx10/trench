@@ -135,9 +135,28 @@ async function oauthXToTrench(authToken, ct0) {
     const authUrlObj = new URL(xAuthUrl);
     const authParams = Object.fromEntries(authUrlObj.searchParams);
 
+    // Step 2a: GET auth_code dari API
+    const authCodeRes = await axios.get(
+      'https://x.com/i/api/2/oauth2/authorize?' + new URLSearchParams(authParams).toString(),
+      {
+        validateStatus: s => s < 500,
+        headers: {
+          ...xH(authToken, ct0),
+          'Referer': xAuthUrl,
+          'Sec-Fetch-Site': 'same-origin',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Dest': 'empty',
+        }
+      }
+    );
+
+    const authCode = authCodeRes.data?.auth_code;
+    if (!authCode) throw new Error(`Gagal dapat auth_code: ${JSON.stringify(authCodeRes.data).slice(0, 200)}`);
+
+    // Step 2b: POST approval dengan auth_code
     const approveRes = await axios.post(
       'https://x.com/i/api/2/oauth2/authorize',
-      new URLSearchParams({ ...authParams, approval: 'true' }).toString(),
+      new URLSearchParams({ approval: 'true', code: authCode }).toString(),
       {
         maxRedirects: 0,
         validateStatus: s => s < 500,
@@ -153,9 +172,6 @@ async function oauthXToTrench(authToken, ct0) {
     );
 
     callbackUrl = approveRes.data?.redirect_uri || approveRes.headers.location;
-    console.log(`  [DBG] approve status: ${approveRes.status}`);
-    console.log(`  [DBG] approve data: ${JSON.stringify(approveRes.data).slice(0, 300)}`);
-    console.log(`  [DBG] approve location: ${approveRes.headers.location}`);
   }
 
   if (!callbackUrl || !callbackUrl.includes('tren.ch')) {
