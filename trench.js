@@ -124,6 +124,12 @@ async function oauthXToTrench(authToken, ct0) {
     }
   });
 
+  // DEBUG — hapus setelah fix ditemukan
+  console.log(`  [DBG] xAuth status: ${xAuthRes.status}`);
+  console.log(`  [DBG] xAuth location: ${xAuthRes.headers.location}`);
+  const dbgData = typeof xAuthRes.data === 'string' ? xAuthRes.data.slice(0, 300) : JSON.stringify(xAuthRes.data).slice(0, 300);
+  console.log(`  [DBG] xAuth data: ${dbgData}`);
+
   // Ambil callback URL dari redirect X
   let callbackUrl = xAuthRes.headers.location;
   if (!callbackUrl && typeof xAuthRes.data === 'object') {
