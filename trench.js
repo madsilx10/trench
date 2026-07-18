@@ -153,6 +153,9 @@ async function oauthXToTrench(authToken, ct0) {
     );
 
     callbackUrl = approveRes.data?.redirect_uri || approveRes.headers.location;
+    console.log(`  [DBG] approve status: ${approveRes.status}`);
+    console.log(`  [DBG] approve data: ${JSON.stringify(approveRes.data).slice(0, 300)}`);
+    console.log(`  [DBG] approve location: ${approveRes.headers.location}`);
   }
 
   if (!callbackUrl || !callbackUrl.includes('tren.ch')) {
