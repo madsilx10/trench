@@ -178,24 +178,49 @@ async function oauthXToTrench(authToken, ct0) {
     throw new Error(`X tidak redirect ke tren.ch callback. Location: ${callbackUrl}`);
   }
 
-  // 3. Hit tren.ch callback dengan PKCE cookies → dapat session
-  const cbRes = await axios.get(callbackUrl, {
-    maxRedirects: 10,
-    validateStatus: s => s < 500,
-    headers: {
-      ...navHeaders,
-      'Sec-Fetch-Site': 'cross-site',
-      Cookie: trenchPkceCookies,
-    }
-  });
-
-  const setCookies = cbRes.headers['set-cookie'] || [];
+  // 3. Hit tren.ch callback — follow redirect manual biar cookies terakumulasi
+  let currentUrl = callbackUrl;
+  let accCookies = trenchPkceCookies;
   let trenchSession = '', trenchUser = '';
-  for (const c of setCookies) {
-    const sm = c.match(/trench_x_session=([^;]+)/);
-    const um = c.match(/trench_user=([^;]+)/);
-    if (sm) trenchSession = sm[1];
-    if (um) trenchUser = decodeURIComponent(um[1]);
+
+  for (let hop = 0; hop < 10; hop++) {
+    const res = await axios.get(currentUrl, {
+      maxRedirects: 0,
+      validateStatus: s => s < 500,
+      headers: {
+        ...navHeaders,
+        'Sec-Fetch-Site': hop === 0 ? 'cross-site' : 'same-origin',
+        Cookie: accCookies,
+      }
+    });
+
+    // Merge cookie baru ke accCookies
+    const newCookies = (res.headers['set-cookie'] || []).map(c => c.split(';')[0]);
+    if (newCookies.length) {
+      const jar = {};
+      for (const pair of accCookies.split('; ').filter(Boolean)) {
+        const idx = pair.indexOf('=');
+        jar[pair.slice(0, idx)] = pair.slice(idx + 1);
+      }
+      for (const pair of newCookies) {
+        const idx = pair.indexOf('=');
+        jar[pair.slice(0, idx)] = pair.slice(idx + 1);
+      }
+      accCookies = Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
+    }
+
+    // Cek apakah session sudah ada
+    for (const c of newCookies) {
+      const sm = c.match(/^trench_x_session=(.+)/);
+      const um = c.match(/^trench_user=(.+)/);
+      if (sm) trenchSession = sm[1];
+      if (um) trenchUser = decodeURIComponent(um[1]);
+    }
+    if (trenchSession) break;
+
+    const next = res.headers.location;
+    if (!next) break;
+    currentUrl = next.startsWith('http') ? next : new URL(next, currentUrl).href;
   }
 
   if (!trenchSession) throw new Error('Gagal dapat trench_x_session dari callback');
