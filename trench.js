@@ -130,28 +130,21 @@ async function oauthXToTrench(authToken, ct0) {
     callbackUrl = xAuthRes.data.redirect_uri;
   }
 
-  // X return 200 = halaman consent, perlu approve dulu
+  // X return 200 = halaman consent (React SPA), bypass langsung ke API endpoint
   if (!callbackUrl && xAuthRes.status === 200) {
-    const html = typeof xAuthRes.data === 'string' ? xAuthRes.data : JSON.stringify(xAuthRes.data);
-    const authCodeMatch = html.match(/"auth_code"\s*:\s*"([^"]+)"/);
-    if (!authCodeMatch) {
-      // DEBUG: dump HTML buat lihat struktur auth_code
-      console.log(`  [DBG] HTML snippet:\n${html.slice(0, 2000)}`);
-      throw new Error('Tidak bisa extract auth_code dari halaman X authorize');
-    }
-    const authCode = authCodeMatch[1];
+    const authUrlObj = new URL(xAuthUrl);
+    const authParams = Object.fromEntries(authUrlObj.searchParams);
 
     const approveRes = await axios.post(
-      'https://x.com/i/oauth2/authorize',
-      JSON.stringify({ approval: true, code: authCode }),
+      'https://x.com/i/api/2/oauth2/authorize',
+      new URLSearchParams({ ...authParams, approval: 'true' }).toString(),
       {
         maxRedirects: 0,
         validateStatus: s => s < 500,
         headers: {
-          'Content-Type': 'application/json',
-          'Cookie': `auth_token=${authToken}; ct0=${ct0}`,
+          ...xH(authToken, ct0),
+          'Content-Type': 'application/x-www-form-urlencoded',
           'Referer': xAuthUrl,
-          'User-Agent': UA,
           'Sec-Fetch-Site': 'same-origin',
           'Sec-Fetch-Mode': 'cors',
           'Sec-Fetch-Dest': 'empty',
