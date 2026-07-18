@@ -118,17 +118,11 @@ async function oauthXToTrench(authToken, ct0) {
     maxRedirects: 0,
     validateStatus: s => s < 500,
     headers: {
-      ...xH(authToken, ct0),
       ...navHeaders,
       'Sec-Fetch-Site': 'cross-site',
+      Cookie: `auth_token=${authToken}; ct0=${ct0}`,
     }
   });
-
-  // DEBUG — hapus setelah fix ditemukan
-  console.log(`  [DBG] xAuth status: ${xAuthRes.status}`);
-  console.log(`  [DBG] xAuth location: ${xAuthRes.headers.location}`);
-  const dbgData = typeof xAuthRes.data === 'string' ? xAuthRes.data.slice(0, 300) : JSON.stringify(xAuthRes.data).slice(0, 300);
-  console.log(`  [DBG] xAuth data: ${dbgData}`);
 
   // Ambil callback URL dari redirect X
   let callbackUrl = xAuthRes.headers.location;
@@ -150,9 +144,10 @@ async function oauthXToTrench(authToken, ct0) {
         maxRedirects: 0,
         validateStatus: s => s < 500,
         headers: {
-          ...xH(authToken, ct0),
           'Content-Type': 'application/json',
+          'Cookie': `auth_token=${authToken}; ct0=${ct0}`,
           'Referer': xAuthUrl,
+          'User-Agent': UA,
           'Sec-Fetch-Site': 'same-origin',
           'Sec-Fetch-Mode': 'cors',
           'Sec-Fetch-Dest': 'empty',
