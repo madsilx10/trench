@@ -129,6 +129,34 @@ async function oauthXToTrench(authToken, ct0) {
   if (!callbackUrl && typeof xAuthRes.data === 'object') {
     callbackUrl = xAuthRes.data.redirect_uri;
   }
+
+  // X return 200 = halaman consent, perlu approve dulu
+  if (!callbackUrl && xAuthRes.status === 200) {
+    const html = typeof xAuthRes.data === 'string' ? xAuthRes.data : JSON.stringify(xAuthRes.data);
+    const authCodeMatch = html.match(/"auth_code"\s*:\s*"([^"]+)"/);
+    if (!authCodeMatch) throw new Error('Tidak bisa extract auth_code dari halaman X authorize');
+    const authCode = authCodeMatch[1];
+
+    const approveRes = await axios.post(
+      'https://x.com/i/oauth2/authorize',
+      JSON.stringify({ approval: true, code: authCode }),
+      {
+        maxRedirects: 0,
+        validateStatus: s => s < 500,
+        headers: {
+          ...xH(authToken, ct0),
+          'Content-Type': 'application/json',
+          'Referer': xAuthUrl,
+          'Sec-Fetch-Site': 'same-origin',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Dest': 'empty',
+        }
+      }
+    );
+
+    callbackUrl = approveRes.data?.redirect_uri || approveRes.headers.location;
+  }
+
   if (!callbackUrl || !callbackUrl.includes('tren.ch')) {
     throw new Error(`X tidak redirect ke tren.ch callback. Location: ${callbackUrl}`);
   }
